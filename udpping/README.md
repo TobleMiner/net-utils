@@ -15,7 +15,7 @@ Run udpping in client mode (-c) on another device. The IP address used must be t
 
 ```
 ./udpping -h
-USAGE: ./udpping [-c IP-ADDRESS] [-p PORT] [-i TIMEOUT] [-s PACKET SIZE]
+USAGE: ./udpping [-c IP-ADDRESS] [-p PORT] [-i TIMEOUT] [-s PACKET_SIZE]
 -c: Client mode, IP-ADDRESS is address of device running ./udpping in server mode
 ```
 
