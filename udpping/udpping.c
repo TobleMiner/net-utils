@@ -10,9 +10,11 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <signal.h>
+#include <netdb.h>
+#include <assert.h>
 
 #define PING_INTERVAL 200
-#define PORT 31337
+#define PORT "31337"
 #define SIZE 16
 
 bool do_exit = false;
@@ -30,34 +32,37 @@ void doshutdown(int signal)
 
 int main(int argc, char** argv)
 {
-	struct sockaddr_in server_addr, client_addr, nat_addr;
+	struct sockaddr_storage *client_addr, nat_addr, *server_addr;
+	struct addr_len;
 	int sock, err = 0, interval = PING_INTERVAL;
-	short port = PORT;
+	char* port = PORT;
 	struct timeval timeout;
 	size_t packetsize = SIZE;
 	unsigned char* buffer;
 	unsigned long seq = 0, loss_cnt = 0, seq_net, seq_recv;
-	bool client = false;
 	ssize_t len;
 	char opt;
 	socklen_t slen;
+	char* client = NULL;
+	struct addrinfo* client_addrinfo = NULL;
+	size_t client_addr_len;
+	struct addrinfo* server_addrinfo = NULL;
+	size_t server_addr_len;
+	char* listen_addr = "::";
+	char host_tmp[NI_MAXHOST] = { 0 }, port_tmp[NI_MAXSERV] = { 0 };
 
-	while((opt = getopt(argc, argv, "c:p:i:s:h")) != -1)
+	while((opt = getopt(argc, argv, "c:l:p:i:s:h")) != -1)
 	{
 		switch(opt)
 		{
 			case 'c':
-				client = true;
-				if(inet_pton(AF_INET, optarg, &(client_addr.sin_addr.s_addr)) != 1)
-				{
-					fprintf(stderr, "Invalid ip address\n");
-					show_usage(argv[0]);
-					err = -EINVAL;
-					goto exit_err;
-				}
+				client = optarg;
+				break;
+			case 'l':
+				listen_addr = optarg;
 				break;
 			case 'p':
-				port = atoi(optarg);
+				port = optarg;
 				break;
 			case 'i':
 				interval = atoi(optarg);
@@ -76,27 +81,41 @@ int main(int argc, char** argv)
 		}
 	}
 
+	// Parse client endpoint
+	if(client) {
+		if((err = getaddrinfo(client, port, NULL, &client_addrinfo))) {
+			fprintf(stderr, "Failed to parse client endpoint [%s]:%s, %s\n", client, port, gai_strerror(err));
+			goto exit_err;
+		}
+		client_addr = (struct sockaddr_storage*)client_addrinfo->ai_addr;
+		client_addr_len = client_addrinfo->ai_addrlen;
+	}
+
 	// Init packet buffer
 	buffer = malloc(packetsize);
 	if(!buffer)
 	{
 		fprintf(stderr, "Failed to allocate packet buffer\n");
 		err = -ENOMEM;
-		goto exit_err;
+		goto exit_addr;
 	}
 	memset(buffer, 0x55, packetsize);
 
 	// Setup server socket
-	server_addr.sin_family = AF_INET;
-	server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-	server_addr.sin_port = htons(port);
-	if((sock = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+	if((err = getaddrinfo(listen_addr, port, NULL, &server_addrinfo))) {
+			fprintf(stderr, "Failed to parse server endpoint [%s]:%s, %s\n", listen_addr, port, gai_strerror(err));
+			goto exit_buffer;
+	}
+	server_addr = (struct sockaddr_storage*)server_addrinfo->ai_addr;
+	server_addr_len = server_addrinfo->ai_addrlen;
+
+	if((sock = socket(server_addr->ss_family, SOCK_DGRAM, 0)) < 0)
 	{
 		fprintf(stderr, "Failed to set up server socket, %s(%d)\n", strerror(errno), errno);
 		err = -errno;
 		goto exit_buffer;
 	}
-	if(bind(sock, (struct sockaddr*) &server_addr, sizeof(server_addr)))
+	if(bind(sock, (struct sockaddr*)server_addr, server_addr_len))
 	{
 		fprintf(stderr, "Failed to bind server socket, %s(%d)\n", strerror(errno), errno);
 		err = -errno;
@@ -106,10 +125,6 @@ int main(int argc, char** argv)
 	timeout.tv_sec = 0;
 	timeout.tv_usec = interval * 1000;
 	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
-
-	// Setup client address
-	client_addr.sin_port = htons(port);
-	client_addr.sin_family = AF_INET;
 
 	// Set signal handler
 	if(signal(SIGINT, doshutdown))
@@ -131,8 +146,9 @@ int main(int argc, char** argv)
 				goto exit_sock;
 			}
 			memcpy(buffer, &seq_net, sizeof(seq_net));
-			printf("Sending to %s:%u, buffer size=%zd\n", inet_ntoa((struct in_addr)client_addr.sin_addr), ntohs(client_addr.sin_port), packetsize);
-			if((len = sendto(sock, buffer, packetsize, 0, (struct sockaddr*) &client_addr, sizeof(client_addr))) < packetsize)
+			assert(!getnameinfo((struct sockaddr*)client_addr, client_addr_len, host_tmp, NI_MAXHOST, port_tmp, NI_MAXSERV, NI_NUMERICHOST | NI_NUMERICSERV));
+			printf("Sending to %s:%s, buffer size=%zd\n", host_tmp, port_tmp, packetsize);
+			if((len = sendto(sock, buffer, packetsize, 0, (struct sockaddr*)client_addr, client_addr_len)) < packetsize)
 			{
 				if(len < 0)
 				{
@@ -179,9 +195,10 @@ recv_again:
 			}
 			else
 			{
+				assert(!getnameinfo((struct sockaddr*)&nat_addr, slen, host_tmp, NI_MAXHOST, port_tmp, NI_MAXSERV, NI_NUMERICHOST | NI_NUMERICSERV));
 				memcpy(&seq_net, buffer, sizeof(seq_net));
 				seq_recv = ntohl(seq_net);
-				printf("Received data for seq=%lu, port=%u\n", seq_recv, ntohs(nat_addr.sin_port));
+				printf("Received data from %s for seq=%lu, port=%s\n", host_tmp, seq_recv, port_tmp);
 				if((len = sendto(sock, buffer, packetsize, 0, (struct sockaddr*) &nat_addr, slen)) < packetsize)
 				{
 					if(len < 0)
@@ -208,6 +225,13 @@ exit_sock:
 	close(sock);
 exit_buffer:
 	free(buffer);
+exit_addr:
+	if(client_addrinfo) {
+		freeaddrinfo(client_addrinfo);
+	}
 exit_err:
+	if(server_addrinfo) {
+		freeaddrinfo(server_addrinfo);
+	}
 	return err;
 }
