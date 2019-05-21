@@ -188,6 +188,7 @@ recv_again:
 		}
 		else
 		{
+			slen = sizeof(struct sockaddr_storage);
 			if((len = recvfrom(sock, buffer, packetsize, 0, (struct sockaddr*) &nat_addr, &slen)) < 0)
 			{
 				if(errno != EAGAIN)
