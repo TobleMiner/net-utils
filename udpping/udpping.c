@@ -19,8 +19,8 @@ bool do_exit = false;
 
 void show_usage(char* bin_name)
 {
-	printf("USAGE: %s [-c IP-ADDRESS] [-p PORT] [-i TIMEOUT] [-s PACKET_SIZE]\n", bin_name);
-	printf("-c: Client mode, IP-ADDRESS is address of device running %s in server mode\n", bin_name);
+	fprintf(stderr, "USAGE: %s [-c IP-ADDRESS] [-p PORT] [-i TIMEOUT] [-s PACKET_SIZE]\n", bin_name);
+	fprintf(stderr, "-c: Client mode, IP-ADDRESS is address of device running %s in server mode\n", bin_name);
 }
 
 void doshutdown(int signal)
