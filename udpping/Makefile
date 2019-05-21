@@ -21,9 +21,6 @@ PKG_RELEASE:=1
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/$(PKG_NAME)
 
-include $(TOPDIR)/../package/gluon.mk
-include $(INCLUDE_DIR)/cmake.mk
-
 define Package/udpping
 	SECTION:=net
 	CATEGORY:=Network
