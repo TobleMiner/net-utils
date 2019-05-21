@@ -4,8 +4,8 @@ all: udpping
 	$(CC) -c $< -o $@
 
 clean:
-	$(RM) *.o
+	$(RM) src/*.o
 	$(RM) udpping
 
-udpping: udpping.o
+udpping: src/udpping.o
 	$(CC) -o $@ $<
