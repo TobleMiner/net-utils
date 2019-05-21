@@ -50,11 +50,20 @@ int main(int argc, char** argv)
 	size_t server_addr_len;
 	char* listen_addr = "::";
 	char host_tmp[NI_MAXHOST] = { 0 }, port_tmp[NI_MAXSERV] = { 0 };
+	const struct addrinfo hints_v4 = { .ai_family = AF_INET };
+	const struct addrinfo hints_v6 = { .ai_family = AF_INET6 };
+	const struct addrinfo* hint = NULL;
 
-	while((opt = getopt(argc, argv, "c:l:p:i:s:h")) != -1)
+	while((opt = getopt(argc, argv, "46c:l:p:i:s:h")) != -1)
 	{
 		switch(opt)
 		{
+			case '4':
+				hint = &hints_v4;
+				break;
+			case '6':
+				hint = &hints_v6;
+				break;
 			case 'c':
 				client = optarg;
 				break;
@@ -83,7 +92,7 @@ int main(int argc, char** argv)
 
 	// Parse client endpoint
 	if(client) {
-		if((err = getaddrinfo(client, port, NULL, &client_addrinfo))) {
+		if((err = getaddrinfo(client, port, hint, &client_addrinfo))) {
 			fprintf(stderr, "Failed to parse client endpoint [%s]:%s, %s\n", client, port, gai_strerror(err));
 			goto exit_err;
 		}
