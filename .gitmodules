@@ -1,0 +1,3 @@
+[submodule "udpping"]
+	path = udpping
+	url = https://github.com/TobleMiner/udpping.git
